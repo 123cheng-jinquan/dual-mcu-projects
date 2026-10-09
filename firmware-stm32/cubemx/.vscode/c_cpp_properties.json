@@ -1,0 +1,31 @@
+{
+  // IntelliSense 配置。
+  // 这个 CubeMX 工程的布局：源码在 cubemx/Src、头文件在 cubemx/Inc、
+  // Makefile 与启动文件在 cubemx/Projects。用 VSCode 打开 firmware-stm32/cubemx 目录即可生效。
+  "version": 4,
+  "configurations": [
+    {
+      "name": "STM32F411",
+      "includePath": [
+        "${workspaceFolder}/Inc",
+        "${workspaceFolder}/Drivers/STM32F4xx_HAL_Driver/Inc",
+        "${workspaceFolder}/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy",
+        "${workspaceFolder}/Drivers/CMSIS/Device/ST/STM32F4xx/Include",
+        "${workspaceFolder}/Drivers/CMSIS/Include",
+        "${workspaceFolder}/Middlewares/Third_Party/FreeRTOS/Source/include",
+        "${workspaceFolder}/Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS",
+        "${workspaceFolder}/Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F",
+        "${workspaceFolder}/../App"
+      ],
+      "defines": [
+        "USE_HAL_DRIVER",
+        "STM32F411xE",
+        "REGBANK_USE_FREERTOS"
+      ],
+      "compilerPath": "D:/STM32/STM32CubeCLT_1.21.0/GNU-tools-for-STM32/bin/arm-none-eabi-gcc.exe",
+      "cStandard": "c99",
+      "cppStandard": "c++17",
+      "intelliSenseMode": "gcc-arm"
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+# ---- STM32 / CubeMX 生成物 ----
+firmware-stm32/cubemx/Debug/
+firmware-stm32/cubemx/Release/
+firmware-stm32/cubemx/build/
+firmware-stm32/cubemx/**/*.o
+firmware-stm32/cubemx/**/*.d
+firmware-stm32/cubemx/**/*.elf
+firmware-stm32/cubemx/**/*.map
+firmware-stm32/cubemx/**/*.list
+firmware-stm32/cubemx/.mxproject
+
+# ★ 第三方 vendor 库不入库（53 MB，占仓库 95%）★
+#   Drivers/ 里是 ST 官方的 HAL 驱动 + ARM 的 CMSIS：
+#     CMSIS/Device (24.9 MB) + CMSIS/DSP (12.1 MB) + HAL_Driver (9.5 MB) + ...
+#   这些**不是本项目的代码**，只是一份可再获取的副本。
+#   不入库的理由：
+#     · 体积：会把仓库从 ~5 MB 撑到 ~58 MB，clone 一次要等很久
+#     · 噪声：搜代码/看 diff 时会翻出一堆 vendor 文件
+#     · 可复现：CubeMX 用 .ioc 重新生成时会自动拉齐（见下）
+#   ⚠ 代价与恢复方式（**这条很重要，别忘**）：
+#     克隆到新机器后，必须用 STM32CubeMX 打开 `ModbusGatewayF411.ioc`
+#     并 "Generate Code"，它会重新下载并放好 Drivers/。
+#     或者从 STM32CubeF4 包（en.stm32cubef4.zip）里拷 Drivers/ 进来。
+#   如果将来希望"克隆即可编译、不依赖 CubeMX"，就把下面这行删掉
+#   （代价是仓库 +53 MB）—— 这是个**有意的取舍**，不是疏忽。
+firmware-stm32/cubemx/Drivers/
+
+firmware-stm32/cubemx/**/MDK-ARM/*/
+firmware-stm32/test/*.exe
+firmware-stm32/test/*.o
+firmware-stm32/test/test_modbus
+
+# ---- ESP32 / PlatformIO ----
+firmware-esp32/.pio/
+firmware-esp32/.vscode/.browse.c_cpp.db*
+firmware-esp32/.vscode/c_cpp_properties.json
+firmware-esp32/.vscode/launch.json
+firmware-esp32/.vscode/ipch/
+# PlatformIO 生成的编译数据库（11.9 MB！）——纯本机构建产物：
+#   · 内容是本机绝对路径 + 全部 -D/-I 宏，换台机器就失效
+#   · 体积大且每次编译都变，会把 git diff 淹掉
+#   · 需要时用 `pio run -t compiledb` 重新生成
+firmware-esp32/compile_commands.json
+compile_commands.json
+# 中文字库生成工具的 npm 产物（见文件末尾的说明）
+firmware-esp32/package-lock.json
+
+# ---- 构建产物：反汇编 / 符号清单（每个 1~2 MB，每次编译都变）----
+firmware-stm32/cubemx/Projects/build/
+*.lst
+*.su
+
+# ---- PC 工具 / 数据集 ----
+tools/__pycache__/
+tools/.pytest_cache/
+**/__pycache__/
+*.pyc
+_selftest_tmp/
+data/
+*.csv
+!tools/**/*.csv
+*.tflite
+*.h5
+*.keras
+*.joblib
+
+# ---- 本机专用的 npm 目录（为了绕开沙箱的 EPERM 才建在工作区里）----
+# 生成中文字库用的 lv_font_conv 装在这里；**不该入库**：
+# 它是本机环境产物，别人 clone 后自己 `npm install lv_font_conv` 即可。
+.npm-cache/
+.npm-global/
+node_modules/
+
+# ---- 编辑器 / 系统 ----
+# 只忽略仓库根目录的 .vscode；firmware-stm32/cubemx/.vscode 是要版本化的调试配置
+.vscode/*
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+~$*

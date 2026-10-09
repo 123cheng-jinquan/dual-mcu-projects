@@ -1,0 +1,36 @@
+# PC 侧工具依赖（tools/）。安装：pip install -r tools/requirements.txt
+# 注意：本仓库只提供清单，不会自动安装。核心两个（pymodbus/pyserial）就能跑通 docs/03 阶段 3/4。
+
+# --- Modbus 主机/从机（阶段 3/4）---
+# 版本区间是**实测出来的**，不是保守估计：
+#   * 3.7 ~ 3.9：modbus_slave_sim.py 使用的 ModbusSlaveContext + 数据块注入接口可用，
+#     且服务端支持 custom_pdu（本脚本靠它把数量越界/只读区写入做成异常 02/03）。
+#   * 3.10 起：pymodbus **删除了 ModbusSlaveContext / ModbusSequentialDataBlock**
+#     （改用全新的 SimData/SimDevice API），模拟器会启动失败 → 必须 < 3.10。
+#   * 3.6.x：服务端不接受 custom_pdu，功能码覆盖（异常 01）与数量边界会弱化 → 建议 >= 3.7。
+# API 差异：3.x 用 framer=FramerType.RTU、read_holding_registers(address, count=, slave=)；
+#   3.7 起 FramerType 从 pymodbus.framer 导入；2.x 是 unit= 且无 framer=，整体不兼容。
+pymodbus>=3.7,<3.10
+
+# --- 串口 ---
+pyserial
+
+# --- 数值与数据 ---
+numpy
+pandas                 # 可选：notebook 里做数据集统计与可视化
+
+# --- 训练（阶段 6）---
+tensorflow             # 训练 + tflite 转换；Windows 下的推理也走 tensorflow.lite.Interpreter
+scikit-learn           # TensorFlow 不可用时的回退训练路径（不产出 tflite，只验证可分性）
+pytest                 # crc16_test.py 的 pytest 兼容层（也可直接 python crc16_test.py）
+
+# --- 推理运行时（阶段 6 部署后对拍，按平台二选一）---
+# 平台差异说明：
+#   * Windows：tflite-runtime 官方**没有 wheel**，请用 tensorflow（上面已列）里的
+#     tensorflow.lite.Interpreter —— verify_tflite.py 会自动按 tflite_runtime → ai_edge_litert
+#     → tensorflow.lite 的顺序尝试。
+#   * Linux / macOS / 树莓派 / ARM 板：装 tflite-runtime 最轻量（无需拖整个 TF）。
+#   * ai-edge-litert 是 Google 对 tflite-runtime 的新命名/迁移方向，API 同名（Interpreter），
+#     新环境优先装它即可。
+# tflite-runtime
+# ai-edge-litert

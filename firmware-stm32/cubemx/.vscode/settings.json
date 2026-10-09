@@ -1,0 +1,48 @@
+{
+  // STM32 下位机（CubeMX + Makefile 工程）的 VSCode 工作区设置。
+  // 用 VSCode 打开 firmware-stm32/cubemx 目录即可生效。
+
+  // ---- 调试工具路径（arm-none-eabi-gcc 由 STM32CubeCLT 自带，已在系统 PATH 里）----
+  "cortex-debug.armToolchainPath": "D:/STM32/STM32CubeCLT_1.21.0/GNU-tools-for-STM32/bin",
+  "cortex-debug.openocdPath": "D:/MSYS2/ucrt64/bin/openocd.exe",
+
+  // ---- IntelliSense ----
+  "C_Cpp.default.cStandard": "c99",
+  "C_Cpp.default.defines": [
+    "USE_HAL_DRIVER",
+    "STM32F411xE",
+    "REGBANK_USE_FREERTOS"
+  ],
+  "C_Cpp.default.compilerPath": "D:/STM32/STM32CubeCLT_1.21.0/GNU-tools-for-STM32/bin/arm-none-eabi-gcc.exe",
+  "C_Cpp.default.intelliSenseMode": "gcc-arm",
+
+  // 让 .ioc / .ld 有语法高亮
+  "files.associations": {
+    "*.ioc": "ini",
+    "*.ld": "linkerscript"
+  },
+
+  // ---- 终端设置（踩过坑，别乱改）----
+  // 教训：把默认终端设成 MSYS2 的 `bash -l`（登录 shell）后，MSYS2 的登录脚本会把工作目录
+  // 切到 $HOME，构建任务里的 cwd 被改掉，make 就报「没有指明目标并且找不到 makefile」。
+  // 解决：交互终端与自动化(任务)终端分开配置 —— 任务固定用 PowerShell；
+  //       MSYS2 那个 profile 也去掉 -l，改成 --noprofile --norc。
+  "terminal.integrated.automationProfile.windows": {
+    "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    "args": ["-NoProfile"]
+  },
+  "terminal.integrated.profiles.windows": {
+    "PowerShell": {
+      "source": "PowerShell"
+    },
+    "MSYS2 UCRT64": {
+      "path": "D:\\MSYS2\\usr\\bin\\bash.exe",
+      "args": ["--noprofile", "--norc"]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true,
+  "editor.rulers": [100]
+}

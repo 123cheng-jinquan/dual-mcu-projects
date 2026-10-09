@@ -1,0 +1,26 @@
+{
+  "version": "0.2.0",
+  // 调试默认走 ST-Link（CubeCLT 自带的 openocd 即可驱动它，无需另装驱动）。
+  // 若改用套件里的 DAP-Link（CMSIS-DAP），把 configFiles 换成 interface/cmsis-dap.cfg，
+  // 并把 name 改成 "Debug (DAP-Link / OpenOCD)"。
+  "configurations": [
+    {
+      "name": "Debug (ST-Link / OpenOCD)",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}/Projects",
+      "executable": "${workspaceFolder}/Projects/build/ModbusGatewayF411.elf",
+      "servertype": "openocd",
+      "device": "STM32F411RE",
+      "configFiles": [
+        "interface/stlink.cfg",
+        "target/stm32f4x.cfg"
+      ],
+      "openOCDLaunchCommands": ["adapter speed 1000"],
+      "svdFile": "D:/STM32/STM32CubeCLT_1.21.0/STMicroelectronics_CMSIS_SVD/STM32F411.svd",
+      "runToEntryPoint": "main",
+      "preLaunchTask": "build",
+      "showDevDebugOutput": "none"
+    }
+  ]
+}

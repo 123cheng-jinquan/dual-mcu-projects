@@ -1,0 +1,114 @@
+{
+  "version": "2.0.0",
+  // 所有 make 任务都显式用 -C 指定工程目录，不依赖 shell 的当前目录
+  // —— 避免 MSYS2 登录脚本切换 cwd 之类的问题。
+  //
+  // 烧写/调试默认走 ST-Link（CubeCLT 自带 openocd 配置与 ST 官方 CLI 都能驱动它）。
+  // 若换回套件里的 DAP-Link（CMSIS-DAP），用带 DAP-Link 字样那两个任务。
+  "tasks": [
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "make",
+      "args": ["-C", "${workspaceFolder}/Projects", "-j8"],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$gcc"],
+      "detail": "编译固件，产物在 Projects/build/ModbusGatewayF411.elf"
+    },
+    {
+      "label": "rebuild",
+      "type": "shell",
+      "command": "make",
+      "args": ["-C", "${workspaceFolder}/Projects", "clean", "-j8"],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "group": "build",
+      "problemMatcher": ["$gcc"],
+      "detail": "全量重编：改了头文件或 Makefile 后用它（想看到完整编译过程就用这个）"
+    },
+    {
+      "label": "clean",
+      "type": "shell",
+      "command": "make",
+      "args": ["-C", "${workspaceFolder}/Projects", "clean"],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "problemMatcher": []
+    },
+    {
+      "label": "probe check (ST-Link 接线自检)",
+      "type": "shell",
+      "command": "openocd",
+      "args": [
+        "-f", "interface/stlink.cfg",
+        "-f", "target/stm32f4x.cfg",
+        "-c", "adapter speed 1000",
+        "-c", "init; shutdown"
+      ],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "problemMatcher": [],
+      "detail": "只连接不烧写。看到 'Target voltage: 3.2xxx' 说明电源和地接对了；若再报 'init mode failed / Unable to get core ID'，就是 SWDIO/SWCLK 接反或没插紧"
+    },
+    {
+      "label": "flash (ST-Link)",
+      "type": "shell",
+      "command": "openocd",
+      "args": [
+        "-f", "interface/stlink.cfg",
+        "-f", "target/stm32f4x.cfg",
+        "-c", "adapter speed 1000",
+        "-c", "program build/ModbusGatewayF411.elf verify reset exit"
+      ],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "dependsOn": "build",
+      "problemMatcher": [],
+      "detail": "用 ST-Link 烧写并校验，烧完自动复位运行"
+    },
+    {
+      "label": "flash (ST-Link, ST 官方 CLI)",
+      "type": "shell",
+      "command": "STM32_Programmer_CLI",
+      "args": [
+        "-c", "port=SWD",
+        "-w", "build/ModbusGatewayF411.elf",
+        "-v",
+        "-rst"
+      ],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "dependsOn": "build",
+      "problemMatcher": [],
+      "detail": "备选：ST 官方烧写工具（排查问题时它给出的信息比 openocd 更细，会打印芯片型号/Flash 大小）"
+    },
+    {
+      "label": "flash (DAP-Link / CMSIS-DAP)",
+      "type": "shell",
+      "command": "openocd",
+      "args": [
+        "-f", "interface/cmsis-dap.cfg",
+        "-f", "target/stm32f4x.cfg",
+        "-c", "adapter speed 1000",
+        "-c", "program build/ModbusGatewayF411.elf verify reset exit"
+      ],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "dependsOn": "build",
+      "problemMatcher": [],
+      "detail": "套件里的 DAP-Link 用这个。若报 unable to find a matching CMSIS-DAP device，先用 Zadig 把它驱动换成 WinUSB"
+    },
+    {
+      "label": "size",
+      "type": "shell",
+      "command": "arm-none-eabi-size",
+      "args": ["build/ModbusGatewayF411.elf"],
+      "options": { "cwd": "${workspaceFolder}/Projects" },
+      "problemMatcher": [],
+      "detail": "看 Flash/RAM 占用（当前约 33KB / 34KB）"
+    },
+    {
+      "label": "app patch (重新生成后执行)",
+      "type": "shell",
+      "command": "powershell",
+      "args": ["-ExecutionPolicy", "Bypass", "-NoProfile", "-File", "${workspaceFolder}/../apply_app_patch.ps1"],
+      "problemMatcher": [],
+      "detail": "CubeMX 重新 GENERATE CODE 后，用这个把 App/ 的改动补回 Makefile，并清掉 CubeMX 列了却没生成的文件（幂等）"
+    }
+  ]
+}
