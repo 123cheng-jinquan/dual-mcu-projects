@@ -79,3 +79,6 @@ node_modules/
 Thumbs.db
 desktop.ini
 ~$*
+
+# ---- 长跑测试产物（几小时的原始日志，几十 MB）----
+logs/

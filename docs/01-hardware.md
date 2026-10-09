@@ -89,11 +89,11 @@
 | **ADC1** | PC0–PC5, PB0, PB1 | 8 通道 **扫描 + DMA 循环**；采样时间 ≥84 cycles；VDDA 加 0.1µF+1µF 去耦 |
 | **I2C1** | PB6=SCL, PB7=SDA | 400kHz；MPU6050(0x68)、MAX30102(0x57)、BMP280(0x76)、SSD1306(0x3C)、VL53L0X(0x29) |
 | **USART2** | PA2=TX, PA3=RX | **Modbus RTU 从机**；**115200** 8N1（9600 仅作链路自检，原因见 `docs/02` §1.1）；开 IDLE 中断 + DMA |
-| **GPIO 输出** | PA1 | RS485 DE/RE，在 **TC 中断**里翻转 |
+| **GPIO 输出** | **PA5** | **RS485 DE**（⚠️ 不是规划里的 PA1，见 §4.1） |
 | **TIM3** | CH1=PA6, CH2=PA7, CH3=PC8, CH4=PC9 | CH1/CH2：1kHz PWM（风扇/电机）；CH3/CH4：RGB G/B（可 1kHz） |
 | **TIM1** | CH1=PA8 | RGB 的 R 通道 PWM |
-| **TIM2** | CH1=PA5 | **SG90 舵机：50Hz，0.5~2.5ms 脉宽** |
-| **GPIO 输入** | PA4(人体感应), PB2(人体雷达), PA0(KEY1) | PA4/PB2 用上拉/下拉按模块输出电平定 |
+| **TIM2** | CH1=**PA0** | ⚠️ **舵机 PWM 实际落在 PA0**（不是代码注释里写的 PA5），见 §4.1 |
+| **GPIO 输入** | PA4(人体感应), PB2(人体雷达) | PA4/PB2 用上拉/下拉按模块输出电平定（PA0 另见 §4.1） |
 | **GPIO 输出** | PC10, PC11(电机方向), PC12(蜂鸣器), PD2(状态灯), PA15(备用) | — |
 | **USART1** | PA9/PA10 | 调试 printf + **数据集打点**（与 485 链路并行，很重要） |
 | **SPI2** | PB12–PB15 | 板载 W25Q128，断网缓存（v0.4 再用） |
@@ -101,7 +101,48 @@
 | **IWDG** | — | 必开，~2s 超时 |
 | **FreeRTOS** | — | 见 `plan.md` §7.1；每任务栈大小写进 README |
 
-**不用的引脚**：PA9–PA12(调试/USB)、PA13/PA14(SWD)、PC13(板载 LED)、PB3/PB4/PB5/PB12–PB15(SPI)、PC6/PC7(备用)。
+**不用的引脚**：PA9–PA12(调试/USB)、PA13/PA14(SWD)、PC13(板载 LED)、PB3/PB4/PB5/PB12–PB15(SPI)、PC6/PC7(备用)、**PA1(空)**
+
+### 4.1 ⚠️ 已知限制：舵机不可用 + PA0 被占用（2026-10 实机核对）
+
+**上表已按实机 CubeMX 配置修正**，与最初的规划有 3 处偏差，**必须知道**：
+
+| 信号 | 规划（本文件早期版本） | **实际** | 后果 |
+|---|---|---|---|
+| RS485 DE | PA1 | **PA5**（`GPIO_Output`） | 485 正常工作 ✅ |
+| 舵机 PWM | PA5（TIM2_CH1） | **PA0**（TIM2_CH1 的真实引脚） | **舵机不会动** ❌ |
+| PA0 | 板载 KEY1 | 被 TIM2_CH1 的 50Hz PWM 驱动 | 与 KEY1 冲突 ⚠️ |
+
+**实测依据**（`cubemx/ModbusGatewayF411.ioc`）：
+```
+PA0-WKUP.Signal=S_TIM2_CH1_ETR      ← 舵机 PWM 的真实引脚
+PA5.Signal=GPIO_Output              ← RS485_DE
+PA5.GPIO_Label=RS485_DE
+PA1 未配置
+```
+
+**机制（很重要，别弄反）**：
+`HAL_TIM_PWM_Start()` **不会重新配置 GPIO 的复用功能** —— 引脚复用是 CubeMX 生成的
+`MX_GPIO_Init()` / `MX_TIM2_Init()` 在启动时一次性定死的。
+所以：
+- `HAL_TIM_PWM_Start(htim2, TIM_CHANNEL_1)` 只是在 **PA0** 上产生波形；
+- **PA5 始终是普通 GPIO 输出**（RS485_DE），所以 **485 不受舵机使能影响**；
+- 代价是**舵机接在 PA5 上不会动**（那里没有 PWM）。
+
+> 📌 我曾误判为"使能舵机会把 485 的 DE 变成 50Hz 方波而搞崩 485"——
+> **这是错的**，因为 TIM2_CH1 根本不在 PA5 上。记录在此避免重复误判。
+
+**为什么不修**（2026-10 决策）：
+本项目**聚焦振动监测**，已精简掉舵机/环境传感器等外围（见 `docs/04` §范围分级），
+所以舵机功能属于"预留未实现"，不是缺陷。485 与主链路完全不受影响。
+
+**将来要启用舵机时的修法**（二选一）：
+1. **推荐**：CubeMX 里把 `RS485_DE` 改到 **PA1**（原本的规划位置，现在空着），
+   PA5 让给 `TIM2_CH1` → 舵机和 485 各归其位，互不打扰；
+2. 或者把舵机换到别的空闲定时器通道（PA1 是 USART2_RTS/ TIM5_CH2 可选）。
+⚠ 无论哪种，都要**重新生成 CubeMX + 重新烧写**，并在 `app_main.c` 同步改
+`PIN_RS485_DE_PIN` 与 `s_htim_servo` 的注释。
+
 
 ---
 

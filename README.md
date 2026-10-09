@@ -15,11 +15,14 @@
 | 文档 | 内容 |
 |---|---|
 | [`plan.md`](plan.md) | **主计划**：架构、硬件现状、场景选型、时间表、风险 |
+| [`docs/06-decisions-and-results.md`](docs/06-decisions-and-results.md) | ★ **工程决策与关键结果**（答辩/简历素材）：架构、范围取舍、6 个技术问题与解法、量化指标、工具清单、已知限制、3 分钟演示脚本 |
 | [`docs/04-plan-15days.md`](docs/04-plan-15days.md) | ★ **15 天执行计划**：范围分级（必做/加分/不做）、逐日日程、模型路线把关、屏幕选购、简历与面试题 |
 | [`docs/03-bringup.md`](docs/03-bringup.md) | 分阶段上手指南 + 每阶段验收标准 + 踩坑清单 |
-| [`docs/01-hardware.md`](docs/01-hardware.md) | 引脚分配表（基于 `Core.pdf` 原理图）、接线、电平与供电红线 |
+| [`docs/01-hardware.md`](docs/01-hardware.md) | 引脚分配表（基于 `Core.pdf` 原理图）、接线、电平与供电红线、**§4.1 已知限制（舵机/PA0）** |
 | [`docs/02-modbus-protocol.md`](docs/02-modbus-protocol.md) | 寄存器映射 v0.2、CRC 测试向量、实战帧示例、一致性机制、从机状态机 |
+| [`firmware-esp32/README.md`](firmware-esp32/README.md) | ESP32 侧固件说明 + **§9 排错速查**（485 从 58%→100%、SPI 屏 5 个坑、中文字库、页面操作、波形页） |
 | [`firmware-stm32/CUBEMX-SETUP.md`](firmware-stm32/CUBEMX-SETUP.md) | CubeMX 逐项配置清单（HSE=25MHz、ADC/DMA、USART2+IDLE、DE 时序骨架） |
+| [`docs/05-ovwatch-screen-check.md`](docs/05-ovwatch-screen-check.md) | OV-Watch 屏可用性核对（结论：与 Core 板 18-pin 座不兼容，留档） |
 | [`docs/plan-v0.1.md`](docs/plan-v0.1.md) | 原始草案（留档） |
 
 ## 目录结构
