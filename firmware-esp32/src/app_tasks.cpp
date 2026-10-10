@@ -227,13 +227,32 @@ void app_wdt_feed(void)
  *       或者让主机改用 FC10 连写"完整控制字 + 期望位"，彻底避免 RMW。 */
 static bool ctrl1_rmw_write(uint16_t set_mask, uint16_t clr_mask)
 {
-    slow_regs_t snap;
-    if (!slow_get_latest(&snap)) {
-        APP_LOGW("控制字 RMW 失败：还没有慢车道的有效快照（从机离线？）");
+    /* ★ 2026-10 修正：不能拿"慢车道快照"当 RMW 的基准值 ★
+     * ---------------------------------------------------------------------
+     * 原实现是 `slow_u16(&snap, REG_CTRL1)`，而这里有个**必错的越界**：
+     *   · 慢车道只读 0x0000~0x001B（MODBUS_SLOW_START + MODBUS_SLOW_REG_COUNT = 28）
+     *   · 而 REG_CTRL1 = **0x0020**，**不在这个范围里**
+     *   · slow_u16() 对越界地址直接 `return 0`
+     * ⇒ cur 永远是 0 ⇒ nv = **只有 mask** ⇒ **整个控制字被覆盖，原有位全丢**。
+     *   实测：执行 `beep` 之后，从机 ctrl 从 0x0020 变成 0x0001/0x0008 ——
+     *   bit5（允许本地自治）被无声清掉了。
+     *
+     * 而且**即使范围覆盖到了，用快照做 RMW 在设计上也是错的**：
+     * 快照是慢车道每 1s 采一次的缓存，可能已过期近 1 秒；
+     * 用它算新值会把这一秒内发生的改动**无声地覆盖掉**。
+     *
+     * ⇒ 正确做法：**RMW 之前实时读一次从机的真实值**。
+     *   这也符合 docs/02 §7 的"读-改-写"约定：从机侧没有原子的位操作功能码，
+     *   FC06 是写整字，所以基准值必须是"刚读到的真值"。 */
+    uint16_t cur = 0;
+    if (mb_read_holding(REG_CTRL1, 1, &cur,
+                        MODBUS_TIMEOUT_MS_WRITE, MODBUS_RETRY_WRITE) != MB_OK) {
+        APP_LOGW("控制字 RMW 失败：读 0x%04X 无响应（从机离线？）", REG_CTRL1);
         return false;
     }
-    const uint16_t cur = slow_u16(&snap, REG_CTRL1);
-    const uint16_t nv  = (uint16_t)((cur | set_mask) & (uint16_t)~clr_mask);
+    const uint16_t nv = (uint16_t)((cur | set_mask) & (uint16_t)~clr_mask);
+    APP_LOGI("控制字 RMW：读回 0x%04X，置 0x%04X 清 0x%04X → 写 0x%04X",
+             cur, set_mask, clr_mask, nv);
     return mb_write_single(REG_CTRL1, nv,
                            MODBUS_TIMEOUT_MS_WRITE, MODBUS_RETRY_WRITE) == MB_OK;
 }
@@ -242,21 +261,27 @@ static bool ctrl1_rmw_write(uint16_t set_mask, uint16_t clr_mask)
  * 为什么不用两条 FC06：两条之间如果被别的请求插进来，就会出现
  * "使能开了但 PWM 还是旧的" 或反之的中间态，风扇会抖一下。
  * REG_CTRL1(0x0020) 与 REG_FAN_PWM(0x0021) 地址连续，正好能一帧写完，
- * 这也正是 docs/02 §6 ⑥ 给出的示例。 */
+ * 这也正是 docs/02 §6 ⑥ 给出的示例。
+ *
+ * ★ 同样改为"实时读真值"（理由见 ctrl1_rmw_write）：一次 FC03 读
+ *   0x0020~0x0021 拿基准，再一次 FC10 原子写回 —— 读写各一次，中间窗口最小。 */
 static bool fan_set(uint16_t pwm)
 {
-    slow_regs_t snap;
-    if (!slow_get_latest(&snap)) {
-        APP_LOGW("风扇设置失败：还没有慢车道的有效快照");
-        return false;
-    }
     if (pwm > 1000) {
         pwm = 1000;                 /* docs/02 §5-C：风扇 PWM 范围 0~1000 */
     }
+    uint16_t cur[2] = { 0, 0 };
+    if (mb_read_holding(REG_CTRL1, 2, cur,
+                        MODBUS_TIMEOUT_MS_WRITE, MODBUS_RETRY_WRITE) != MB_OK) {
+        APP_LOGW("风扇设置失败：读 0x%04X~0x%04X 无响应", REG_CTRL1, REG_FAN_PWM);
+        return false;
+    }
     const uint16_t vals[2] = {
-        (uint16_t)(slow_u16(&snap, REG_CTRL1) | CTRL1_FAN_EN),
+        (uint16_t)(cur[0] | CTRL1_FAN_EN),   /* 保留其它使能位 */
         pwm
     };
+    APP_LOGI("风扇设置：控制字 0x%04X → 0x%04X，PWM = %u",
+             cur[0], vals[0], (unsigned)pwm);
     return mb_write_multiple(REG_CTRL1, 2, vals,
                              MODBUS_TIMEOUT_MS_WRITE, MODBUS_RETRY_WRITE) == MB_OK;
 }

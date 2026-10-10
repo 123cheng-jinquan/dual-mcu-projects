@@ -23,9 +23,17 @@
  *    status                    打印当前页 / 轮播状态 / 总线心跳 / 内存
  *    help | ?                  打印命令帮助
  *
- *  用法：串口工具（115200 8N1，COM6）里直接敲 `next` 回车。
- *  ⚠ PlatformIO 的 `pio device monitor` 也能敲，但要注意它默认会**复位设备**；
- *    用 `--no-reset` 或换 putty/串口助手更顺手。
+ *  ── 下行控制（★ 2026-10 新增，用于验证"写方向"链路）──────────────
+ *    beep [0|1]                开/关蜂鸣器（不带参数 = 响 1 秒后自动关）
+ *    rgb R G B | rgb off       设 RGB（0~255，0x 开头按十六进制解析）
+ *    fan 0~1000                风扇 PWM（带使能位一起原子写）
+ *    w 寄存器 值                通用写一个寄存器（地址十进制或 0x 十六进制）
+ *    cset 掩码 | cclr 掩码      控制字置位 / 清位（如 cset 0x20 = 允许本地自治）
+ *
+ *  为什么加这些：项目原先只能"读"（采集→显示），**写方向从未实际验证过**
+ *  ——诊断页那几个按钮需要触摸屏，而触摸没接。这些命令走的是**和 MQTT 下行
+ *  完全相同的路径**（cmd_post → g_cmd_queue → task_cmd → Modbus FC06/FC10），
+ *  所以验证它们等于验证了整条下行链路，且不需要 broker、不需要额外硬件。
  * ========================================================================== */
 
 #include <Arduino.h>
@@ -39,6 +47,112 @@
 
 /* 一行命令的最大长度。超长直接丢弃并提示 —— 不要让它撑爆栈。 */
 #define CONSOLE_LINE_MAX   64
+/* 参数个数上限（beep / rgb / w 最多用 3 个） */
+#define CONSOLE_ARG_MAX    4
+
+/* ---- 参数解析小工具 ---------------------------------------------------- */
+
+/** 解析一个整数：`0x`/`0X` 开头按十六进制，否则十进制。失败返回 false。 */
+static bool parse_u16(const char *s, uint16_t *out)
+{
+    if (s == NULL || *s == '\0') {
+        return false;
+    }
+    char *endp = NULL;
+    const long v = strtol(s, &endp, 0);      /* base=0 → 自动识别 0x / 0 */
+    if (endp == s) {
+        return false;                        /* 一个数字都没解析出来 */
+    }
+    if (v < 0 || v > 0xFFFFL) {
+        return false;
+    }
+    *out = (uint16_t)v;
+    return true;
+}
+
+/** 把 `a,b,c` 或 `a b c` 拆成参数数组。返回实际个数。 */
+static int split_args(char *s, char *argv[], int max_n)
+{
+    int n = 0;
+    while (s != NULL && *s != '\0' && n < max_n) {
+        while (*s == ' ' || *s == ',' || *s == '\t') {
+            s++;
+        }
+        if (*s == '\0') {
+            break;
+        }
+        argv[n++] = s;
+        while (*s != '\0' && *s != ' ' && *s != ',' && *s != '\t') {
+            s++;
+        }
+        if (*s != '\0') {
+            *s++ = '\0';
+        }
+    }
+    return n;
+}
+
+/** 投递一条命令到 g_cmd_queue。返回 false = 队列满。 */
+static bool post(const cmd_msg_t *c)
+{
+    return cmd_post(c, pdMS_TO_TICKS(200));
+}
+
+/** 通用：写一个寄存器（FC06） */
+static void do_write_reg(uint16_t reg, uint16_t val)
+{
+    cmd_msg_t c;
+    memset(&c, 0, sizeof(c));
+    c.kind      = CMD_WRITE_SINGLE;
+    c.start     = reg;
+    c.count     = 1;
+    c.values[0] = val;
+    c.tick      = xTaskGetTickCount();
+    if (post(&c)) {
+        Serial.printf("  → FC06 写 0x%04X = %u (0x%04X)\n", reg, val, val);
+    } else {
+        Serial.println(F("  ✗ 命令队列满，投递失败"));
+    }
+}
+
+/** 控制字置位/清位（RMW，从机侧原子完成） */
+static void do_ctrl_bits(uint16_t mask, bool set)
+{
+    cmd_msg_t c;
+    memset(&c, 0, sizeof(c));
+    c.kind      = set ? CMD_CTRL1_SET_BITS : CMD_CTRL1_CLR_BITS;
+    c.start     = REG_CTRL1;
+    c.count     = 1;
+    c.values[0] = mask;
+    c.tick      = xTaskGetTickCount();
+    if (post(&c)) {
+        Serial.printf("  → 控制字 0x%04X %s（掩码 0x%04X）\n",
+                      REG_CTRL1, set ? "置位" : "清位", mask);
+    } else {
+        Serial.println(F("  ✗ 命令队列满，投递失败"));
+    }
+}
+
+/** RGB：一次 FC10 原子写 R/G/B 三个寄存器，并同时置位 RGB 使能 */
+static void do_rgb(uint16_t r, uint16_t g, uint16_t b)
+{
+    cmd_msg_t c;
+    memset(&c, 0, sizeof(c));
+    c.kind      = CMD_WRITE_MULTIPLE;
+    c.start     = REG_RGB_R;
+    c.count     = 3;
+    c.values[0] = r;
+    c.values[1] = g;
+    c.values[2] = b;
+    c.tick      = xTaskGetTickCount();
+    if (!post(&c)) {
+        Serial.println(F("  ✗ 命令队列满，投递失败"));
+        return;
+    }
+    /* 使能位必须单独置位（它和控制字同寄存器，不能和 RGB 一起原子写） */
+    do_ctrl_bits(CTRL1_RGB_EN, true);
+    Serial.printf("  → RGB = (%u, %u, %u)，已置位 RGB 使能\n", r, g, b);
+}
 
 static void print_help(void)
 {
@@ -50,6 +164,12 @@ static void print_help(void)
     Serial.println(F("  auto=0|1      关/开自动轮播"));
     Serial.println(F("  status        当前页 / 轮播 / 总线 / 内存"));
     Serial.println(F("  help          显示这份帮助"));
+    Serial.println(F("  ── 下行控制（验证写方向）──"));
+    Serial.println(F("  beep [0|1]    蜂鸣器（无参数 = 响 1 秒）"));
+    Serial.println(F("  rgb R G B     设 RGB 颜色，0~255（rgb off 关闭）"));
+    Serial.println(F("  fan 0~1000    风扇 PWM"));
+    Serial.println(F("  w 寄存器 值    通用写寄存器（支持 0x 十六进制）"));
+    Serial.println(F("  cset/cclr 掩码 控制字置位/清位（如 cset 0x28）"));
     Serial.println(F("────────────────────────────────────────────────────"));
     Serial.println();
 }
@@ -77,6 +197,10 @@ static void print_status(void)
                   (unsigned)st.timeout_count, (unsigned)st.retry_count,
                   (unsigned)st.exception_count, (unsigned)st.crc_err_count,
                   st.online ? "在线" : "离线");
+    if (st.exception_count > 0 || st.crc_err_count > 0) {
+        Serial.printf("  ⚠ 最近异常码 = 0x%02X（0x01 功能码非法 / 0x02 地址非法 / 0x03 数值非法）\n",
+                      (unsigned)st.last_exception_code);
+    }
     Serial.printf("  队列     : cmd 等待 %u  ui 等待 %u\n",
                   (unsigned)(g_cmd_queue ? uxQueueMessagesWaiting(g_cmd_queue) : 0),
                   (unsigned)(g_ui_queue  ? uxQueueMessagesWaiting(g_ui_queue)  : 0));
@@ -164,6 +288,109 @@ static void exec_line(char *line)
         }
         gui_set_auto_cycle(on);
         Serial.printf("  → 自动轮播已%s\n", on ? "打开" : "关闭");
+        return;
+    }
+
+    /* ───────────────── 下行控制（验证写方向）───────────────────── */
+
+    if (strcmp(line, "beep") == 0 || strcmp(line, "buzzer") == 0) {
+        if (arg == NULL) {
+            /* 不带参数 = 响 1 秒后自动关（省得忘了关一直响） */
+            do_ctrl_bits(CTRL1_BEEP, true);
+            Serial.println(F("  → 蜂鸣器响 1 秒…"));
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            do_ctrl_bits(CTRL1_BEEP, false);
+            Serial.println(F("  → 已关闭"));
+            return;
+        }
+        uint16_t v;
+        if (!parse_u16(arg, &v)) {
+            Serial.println(F("  ✗ 参数只能是 0 或 1"));
+            return;
+        }
+        do_ctrl_bits(CTRL1_BEEP, v != 0);
+        return;
+    }
+
+    if (strcmp(line, "rgb") == 0) {
+        if (arg == NULL) {
+            Serial.println(F("  用法：rgb R G B（0~255）或 rgb off"));
+            return;
+        }
+        char *argv[CONSOLE_ARG_MAX];
+        const int n = split_args(arg, argv, CONSOLE_ARG_MAX);
+
+        if (strcmp(argv[0], "off") == 0) {
+            /* 关灯：先清使能位（从机侧会把三路 PWM 都置 0） */
+            do_ctrl_bits(CTRL1_RGB_EN, false);
+            Serial.println(F("  → RGB 已关闭"));
+            return;
+        }
+        if (n < 3) {
+            Serial.println(F("  ✗ 需要 3 个参数：rgb R G B（0~255）"));
+            return;
+        }
+        uint16_t r, g, b;
+        if (!parse_u16(argv[0], &r) || !parse_u16(argv[1], &g) || !parse_u16(argv[2], &b)) {
+            Serial.println(F("  ✗ 颜色值解析失败（只能是 0~255 或 0x00~0xFF）"));
+            return;
+        }
+        if (r > 255 || g > 255 || b > 255) {
+            Serial.println(F("  ✗ 颜色值超范围（0~255）"));
+            return;
+        }
+        do_rgb(r, g, b);
+        return;
+    }
+
+    if (strcmp(line, "fan") == 0) {
+        uint16_t v;
+        if (arg == NULL || !parse_u16(arg, &v)) {
+            Serial.println(F("  用法：fan 0~1000（0 = 停）"));
+            return;
+        }
+        if (v > 1000) {
+            Serial.println(F("  ✗ 风扇 PWM 范围 0~1000"));
+            return;
+        }
+        /* 一次 FC10 原子写 [控制字|风扇使能, 风扇PWM]
+         * —— 就是 docs/02 §6⑥ 的示例帧 `01 10 00 20 00 02 04 …` 的用法。
+         * ⚠ 这里直接写控制字整字（不是 RMW），所以必须**先读出当前值再或上使能位**，
+         *   否则会把别的使能位一起清掉。用 CMD_FAN_SET 让 task_cmd 处理这个细节。 */
+        cmd_msg_t c;
+        memset(&c, 0, sizeof(c));
+        c.kind      = CMD_FAN_SET;
+        c.start     = REG_FAN_PWM;
+        c.count     = 1;
+        c.values[0] = v;
+        c.tick      = xTaskGetTickCount();
+        if (post(&c)) {
+            Serial.printf("  → 风扇 PWM = %u（%s）\n", v, (v == 0) ? "停" : "转");
+        } else {
+            Serial.println(F("  ✗ 命令队列满，投递失败"));
+        }
+        return;
+    }
+
+    if (strcmp(line, "w") == 0 || strcmp(line, "write") == 0) {
+        char *argv[CONSOLE_ARG_MAX];
+        const int n = (arg == NULL) ? 0 : split_args(arg, argv, CONSOLE_ARG_MAX);
+        uint16_t reg, val;
+        if (n < 2 || !parse_u16(argv[0], &reg) || !parse_u16(argv[1], &val)) {
+            Serial.println(F("  用法：w 寄存器 值   （如 w 0x0027 450）"));
+            return;
+        }
+        do_write_reg(reg, val);
+        return;
+    }
+
+    if (strcmp(line, "cset") == 0 || strcmp(line, "cclr") == 0) {
+        uint16_t mask;
+        if (arg == NULL || !parse_u16(arg, &mask)) {
+            Serial.println(F("  用法：cset 掩码 / cclr 掩码（如 cset 0x8 开 RGB 使能）"));
+            return;
+        }
+        do_ctrl_bits(mask, strcmp(line, "cset") == 0);
         return;
     }
 
