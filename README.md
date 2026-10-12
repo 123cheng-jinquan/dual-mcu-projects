@@ -15,6 +15,8 @@
 | 文档 | 内容 |
 |---|---|
 | [`plan.md`](plan.md) | **主计划**：架构、硬件现状、场景选型、时间表、风险 |
+| [`docs/07-interview-notes.md`](docs/07-interview-notes.md) | ★★ **面试问答卡片**（本项目专用）：30 秒/3 分钟自我介绍、快速数字表、按主题的 Q&A、**最难问题（485 58%→100%）的完整标准答案**、追问防御清单、三个"千万别答错" |
+| [`docs/08-basics-in-plain-language.md`](docs/08-basics-in-plain-language.md) | ★ **大白话基础**：引脚/外设/寄存器、**什么是"复用"**、**I2C 与上拉电阻**、**为什么降速反而更可靠**、DMA —— 纯生活比喻、零术语 |
 | [`docs/06-decisions-and-results.md`](docs/06-decisions-and-results.md) | ★ **工程决策与关键结果**（答辩/简历素材）：架构、范围取舍、6 个技术问题与解法、量化指标、工具清单、已知限制、3 分钟演示脚本 |
 | [`docs/04-plan-15days.md`](docs/04-plan-15days.md) | ★ **15 天执行计划**：范围分级（必做/加分/不做）、逐日日程、模型路线把关、屏幕选购、简历与面试题 |
 | [`docs/03-bringup.md`](docs/03-bringup.md) | 分阶段上手指南 + 每阶段验收标准 + 踩坑清单 |
