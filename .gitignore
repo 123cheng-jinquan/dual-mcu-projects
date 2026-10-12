@@ -82,3 +82,11 @@ desktop.ini
 
 # ---- 长跑测试产物（几小时的原始日志，几十 MB）----
 logs/
+
+# ---- 网络受限环境的 SSH 变通（见 docs/09-git-remote-note.md）----
+# 这台机器上 github.com:22 的 DNS 解析会被打断，只能用备用入口
+# ssh://git@ssh.github.com:443/... ；本文件是它的主机密钥记录。
+# 属于**本机环境产物**，不该入库。
+.git_hostkeys
+.git_ssh_config
+.git_known_hosts
