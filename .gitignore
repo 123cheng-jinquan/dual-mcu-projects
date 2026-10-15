@@ -90,3 +90,62 @@ logs/
 .git_hostkeys
 .git_ssh_config
 .git_known_hosts
+
+# ---- 临时提取物 / 本地工具链（不属于项目源码）----
+_byj_extract/
+_byj_full/
+_resume_extract/
+_pylibs/
+tools/_pdf_parse.py
+
+# ---- 个人简历（私人文件，不入项目仓库）----
+程锦泉*.docx
+程锦泉*.pdf
+简历/
+
+# =============================================================================
+# 【项目2】声纹门禁 (STM32F103RET6) — Keil MDK 工程
+# =============================================================================
+# Keil 编译产物（.o/.axf/.hex/.map 每次编译都变，不入库）
+firmware-stm32-ret6/MDK-ARM/VoiceLock_RET6/
+firmware-stm32-ret6/MDK-ARM/RTE/
+firmware-stm32-ret6/MDK-ARM/DebugConfig/
+firmware-stm32-ret6/MDK-ARM/Listings/
+firmware-stm32-ret6/MDK-ARM/Objects/
+firmware-stm32-ret6/**/*.o
+firmware-stm32-ret6/**/*.d
+firmware-stm32-ret6/**/*.crf
+firmware-stm32-ret6/**/*.lst
+firmware-stm32-ret6/**/*.axf
+firmware-stm32-ret6/**/*.htm
+firmware-stm32-ret6/**/*.build_log.htm
+firmware-stm32-ret6/**/*.dep
+firmware-stm32-ret6/**/*.lnp
+firmware-stm32-ret6/**/*.iex
+# Keil 用户界面配置（含本机窗口布局/断点，不该跟着走）
+firmware-stm32-ret6/MDK-ARM/*.uvguix.*
+firmware-stm32-ret6/MDK-ARM/*.uvoptx.bak
+# CubeMX 自动备份
+firmware-stm32-ret6/*.ioc.*bak
+firmware-stm32-ret6/MyBiye.ioc.*
+# ---- 论文升级基线（C8T6 版，保留但不入库：与 archive 里的原始包重复）----
+archive/thesis-upgrade-baseline-C8T6/
+
+# =============================================================================
+# 归档区的编译产物（本地保留，不入库 —— 都是 Keil 生成的中间文件）
+# =============================================================================
+archive/**/MDK-ARM/MyBiye/
+archive/**/MDK-ARM/RTE/
+archive/**/MDK-ARM/DebugConfig/
+archive/**/MDK-ARM/Listings/
+archive/**/MDK-ARM/Objects/
+archive/**/*.o
+archive/**/*.d
+archive/**/*.crf
+archive/**/*.lst
+archive/**/*.axf
+archive/**/*.htm
+archive/**/*.dep
+archive/**/*.lnp
+archive/**/*.iex
+archive/**/*.uvguix.*
