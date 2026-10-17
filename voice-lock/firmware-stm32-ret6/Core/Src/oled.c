@@ -1,8 +1,9 @@
 #include "oled.h"
 #include "i2c.h"
 #include <string.h>
+#include <stdio.h>   /* snprintf -- was missing, caused implicit-declaration */
 
-#define OLED_I2C_ADDR        0x78
+/* OLED_I2C_ADDR 已移到 oled.h（诊断代码也要用）*/
 #define OLED_WIDTH           128
 #define OLED_HEIGHT          64
 #define OLED_PAGES           8
@@ -107,12 +108,82 @@ static const uint8_t OLED_Font6x8[][6] = {
     {0x10,0x08,0x08,0x10,0x08,0x00}  /* ~ */
 };
 
+/* =============================================================================
+ *  I2C 错误追踪
+ * =============================================================================
+ *  ★ 为什么必须记录错误 ★
+ *    原来 OLED_WriteCommand/WriteData 调完 HAL_I2C_Master_Transmit 就
+ *    **丢掉返回值** —— I2C 失败了也当成功，屏幕黑着但程序"以为"一切正常。
+ *    这就是"OLED 全黑但没有任何报错"的根源，排查时完全找不到线索。
+ *
+ *    现在：累计成功/失败次数，出错时**自动做一次总线恢复 + 重新初始化**，
+ *    并且把计数暴露给诊断命令，让问题可见。
+ * ========================================================================== */
+static volatile uint32_t s_i2c_ok = 0;
+static volatile uint32_t s_i2c_err = 0;
+
+uint32_t OLED_I2C_OkCount(void)   { return s_i2c_ok; }
+uint32_t OLED_I2C_ErrCount(void)  { return s_i2c_err; }
+
+/* I2C 失败时的"总线恢复"：
+ * STM32F1 的 I2C 有个著名缺陷 —— 从机在传输中途被干扰（或主机复位）后，
+ * 外设会卡在 BUSY，之后**所有**传输都失败且不报错。
+ * 恢复办法：把 SCL/SDA 临时当普通 GPIO，手动打 9 个时钟把从机状态机踢回空闲。 */
+static void OLED_I2CBusRecover(void)
+{
+    GPIO_InitTypeDef gi = {0};
+
+    /* 先软复位 I2C 外设 */
+    __HAL_I2C_DISABLE(&hi2c1);
+    __HAL_I2C_ENABLE(&hi2c1);
+
+    /* 手动时钟脉冲 */
+    gi.Pin   = GPIO_PIN_6 | GPIO_PIN_7;
+    gi.Mode  = GPIO_MODE_OUTPUT_OD;
+    gi.Pull  = GPIO_NOPULL;
+    gi.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOB, &gi);
+
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_RESET);   /* SDA 低 */
+    for (uint32_t i = 0; i < 9U; i++)
+    {
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_RESET);
+        for (volatile uint32_t d = 0; d < 120U; d++) { }
+        HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+        for (volatile uint32_t d = 0; d < 120U; d++) { }
+    }
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_7, GPIO_PIN_SET);
+    for (volatile uint32_t d = 0; d < 240U; d++) { }
+
+    /* 恢复 I2C 复用开漏 */
+    gi.Mode  = GPIO_MODE_AF_OD;
+    gi.Pull  = GPIO_PULLUP;
+    gi.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOB, &gi);
+}
+
+/* 统一的发送封装：带错误计数 + 失败自动恢复 */
+static HAL_StatusTypeDef OLED_Send(uint8_t *buf, uint16_t len)
+{
+    HAL_StatusTypeDef rc = HAL_I2C_Master_Transmit(&hi2c1, OLED_I2C_ADDR,
+                                                   buf, len, 50U);
+    if (rc == HAL_OK) {
+        s_i2c_ok++;
+    } else {
+        s_i2c_err++;
+        /* 失败就恢复一次总线（不递归调用 OLED_Init，避免无限递归）*/
+        OLED_I2CBusRecover();
+    }
+    return rc;
+}
+
 static void OLED_WriteCommand(uint8_t cmd)
 {
     uint8_t data[2];
     data[0] = 0x00;
     data[1] = cmd;
-    HAL_I2C_Master_Transmit(&hi2c1, OLED_I2C_ADDR, data, 2, 100);
+    (void)OLED_Send(data, 2U);
 }
 
 static void OLED_WriteData(uint8_t *data, uint16_t size)
@@ -126,9 +197,57 @@ static void OLED_WriteData(uint8_t *data, uint16_t size)
         chunk = (size - offset > 16U) ? 16U : (uint8_t)(size - offset);
         buf[0] = 0x40;
         memcpy(&buf[1], &data[offset], chunk);
-        HAL_I2C_Master_Transmit(&hi2c1, OLED_I2C_ADDR, buf, chunk + 1U, 100);
+        (void)OLED_Send(buf, (uint16_t)(chunk + 1U));
         offset += chunk;
     }
+}
+
+/* =============================================================================
+ *  SSD1306_Reinit — 显示看门狗
+ * =============================================================================
+ *  ★ 为什么需要这个（真实踩坑记录）★
+ *    现象：跑端到端测试时屏幕突然全黑，但 I2C 统计显示 **err=0**（1079 次
+ *          传输零错误），按复位键屏幕又恢复正常。
+ *
+ *    分析：既然数据一直在成功发出，说明**通信链路没问题**（err=0 是铁证）。
+ *          黑屏的真正原因是 SSD1306 自己"掉显示"了 ——
+ *          音频采集（ADC+DMA 全速）+ ESP32 高速串口收发时电流骤增，
+ *          电压瞬间跌落，SSD1306 内部的 **Display ON 寄存器被复位**；
+ *          而 STM32 板上有电容撑着，主程序完全没受影响、继续正常发数据。
+ *
+ *    对策：**把显示命令周期性重发一遍**（俗称"显示看门狗"）。
+ *          · 屏幕正常时：重发同一套命令没有任何副作用
+ *          · 屏幕掉了时：立刻被重新点亮
+ *          成本约 3ms/2s，可忽略。
+ *
+ *  ⚠ 这里刻意**不调用 OLED_Clear()** —— 重发初始化不应该清掉当前画面，
+ *    否则每次看门狗都会闪一下白屏。只重发"配置 + 开显示"命令。
+ * ========================================================================== */
+void SSD1306_Reinit(void)
+{
+    OLED_WriteCommand(0xAE);   /* 关显示 */
+    OLED_WriteCommand(0xD5);   /* 时钟分频 */
+    OLED_WriteCommand(0x80);
+    OLED_WriteCommand(0xA8);   /* 多路复用比 */
+    OLED_WriteCommand(0x3F);
+    OLED_WriteCommand(0xD3);   /* 显示偏移 */
+    OLED_WriteCommand(0x00);
+    OLED_WriteCommand(0x40);   /* 起始行 */
+    OLED_WriteCommand(0xA1);   /* 段重映射 */
+    OLED_WriteCommand(0xC8);   /* 扫描方向 */
+    OLED_WriteCommand(0xDA);   /* COM 引脚配置 */
+    OLED_WriteCommand(0x12);
+    OLED_WriteCommand(0x81);   /* 对比度 */
+    OLED_WriteCommand(0xCF);
+    OLED_WriteCommand(0xD9);   /* 预充电周期 */
+    OLED_WriteCommand(0xF1);
+    OLED_WriteCommand(0xDB);   /* VCOMH */
+    OLED_WriteCommand(0x30);
+    OLED_WriteCommand(0xA4);   /* 恢复 RAM 内容显示 */
+    OLED_WriteCommand(0xA6);   /* 正常显示（非反色）*/
+    OLED_WriteCommand(0x8D);   /* 电荷泵 */
+    OLED_WriteCommand(0x14);
+    OLED_WriteCommand(0xAF);   /* ★ 开显示（关键的那一位）*/
 }
 
 void OLED_SetCursor(uint8_t page, uint8_t column)
@@ -199,31 +318,10 @@ void OLED_ShowNum(uint8_t page, uint8_t column, uint32_t num, uint8_t len)
 
 void OLED_Init(void)
 {
-    HAL_Delay(100);
+    HAL_Delay(100);        /* 等 SSD1306 内部上电复位完成（手册要求 >100ms）*/
 
-    OLED_WriteCommand(0xAE);
-    OLED_WriteCommand(0xD5);
-    OLED_WriteCommand(0x80);
-    OLED_WriteCommand(0xA8);
-    OLED_WriteCommand(0x3F);
-    OLED_WriteCommand(0xD3);
-    OLED_WriteCommand(0x00);
-    OLED_WriteCommand(0x40);
-    OLED_WriteCommand(0xA1);
-    OLED_WriteCommand(0xC8);
-    OLED_WriteCommand(0xDA);
-    OLED_WriteCommand(0x12);
-    OLED_WriteCommand(0x81);
-    OLED_WriteCommand(0xCF);
-    OLED_WriteCommand(0xD9);
-    OLED_WriteCommand(0xF1);
-    OLED_WriteCommand(0xDB);
-    OLED_WriteCommand(0x30);
-    OLED_WriteCommand(0xA4);
-    OLED_WriteCommand(0xA6);
-    OLED_WriteCommand(0x8D);
-    OLED_WriteCommand(0x14);
-    OLED_WriteCommand(0xAF);
+    /* 配置序列复用 SSD1306_Reinit()，避免两处重复维护同一串命令 */
+    SSD1306_Reinit();
 
     OLED_Clear();
 }

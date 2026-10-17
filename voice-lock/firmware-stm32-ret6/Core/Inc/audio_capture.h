@@ -72,21 +72,58 @@
 #define AUDIO_CAPTURE_SEC        1U
 #define AUDIO_CAPTURE_LEN        (AUDIO_SAMPLE_RATE_HZ * AUDIO_CAPTURE_SEC)
 
-/* ---- 触发检测参数（由原毕设的基线+阈值思路移植过来，但适配 8kHz）--------
- * 原来每 4ms 采一个点，所以"连续 3 次超过阈值"要 12ms；
- * 现在每 125µs 一个点，同样是 12ms 需要 96 个点。这里按**时间**换算。 */
-#define AUDIO_TRIG_BASELINE_MS   200U     /* 基线估计：200ms 静音采样 */
-#define AUDIO_TRIG_BASELINE_N    ((AUDIO_SAMPLE_RATE_HZ / 1000U) * AUDIO_TRIG_BASELINE_MS)
-#define AUDIO_TRIG_DELTA         180U     /* 相对基线的偏差阈值（ADC counts）*/
-#define AUDIO_TRIG_HITS_N        96U      /* 连续 96 个点超阈值 = 12ms 有效语音 */
+/* ---- 触发检测参数（★ 基于"短时能量 RMS"，不是单样本阈值）---------------
+ * ⚠ 这里踩过一个坑，记下来：
+ *   最初我按原毕设的思路写"连续 N 个样本偏离基线就触发"。在 250Hz 时
+ *   N=3 是成立的（12ms 才 3 个样本）；但采样率提到 8kHz 后，
+ *   **语音波形是围绕基线上下振荡的，每半个周期就穿越基线一次**
+ *   （低频语音约每 1~3ms 一次 = 每 8~24 个样本），
+ *   所以"连续 96 个样本都偏离基线"几乎不可能出现 → 永远不触发。
+ *   ⇒ 表面现象是"一直 timeout"。
+ *
+ * 正确做法（也是业界标准 VAD 的做法）：
+ *   把音频分成 10ms 的**帧**，算每帧的 **RMS 能量**，
+ *   能量超过"噪声底 × 倍数"就认为有语音，**连续若干帧**超阈才算触发。
+ *   这样对波形振荡完全免疫，判断的是"响度"而不是"瞬时电平"。
+ * ------------------------------------------------------------------------- */
+#define AUDIO_FRAME_MS           10U      /* 每帧 10ms */
+#define AUDIO_FRAME_SAMPLES      ((AUDIO_SAMPLE_RATE_HZ / 1000U) * AUDIO_FRAME_MS)  /* 80 点 */
+#define AUDIO_TRIG_BASELINE_MS   200U     /* 基线估计窗口（同时用于测噪声底）*/
+#define AUDIO_TRIG_MINSTAT_FRAMES 10U     /* 用 10 帧的最小值估噪声底（抗污染）*/
+#define AUDIO_TRIG_WIN_N         4U       /* 用最近 4 帧的**峰值**判触发 */
+#define AUDIO_TRIG_MULT_NUM      3U       /* 阈值 = 噪声底 × 1.5（分子）*/
+#define AUDIO_TRIG_MULT_DEN      2U       /*                      （分母）*/
+#define AUDIO_TRIG_MIN_RMS       150U     /* 绝对下限。
+                                           * 为什么要有：噪声底测出来太小（或测错）
+                                           * 时，阈值不能低于 150，否则环境波动就误触发。
+                                           * 实测说话 RMS 约 800~1100，150 留足余量。 */
 #define AUDIO_TRIG_TIMEOUT_MS    5000U    /* 等待语音触发的超时 */
 
 /* ---- API --------------------------------------------------------------- */
 
-/** 初始化：配置 GPIOD 时钟、启动 ADC+DMA 循环采样。返回 true = 成功。
- *  ⚠ 必须在 MX_ADC1_Init() / MX_DMA_Init() 之后调用。
- *  ⚠ 会覆盖 ADC1 的触发源配置（改成 TIM2_TRGO + DMA）。 */
-bool audio_init(void);
+/** 初始化结果码（用于精确定位失败在哪一步）
+ *  为什么要这个：原来失败就直接调 Error_Handler()（关中断 + 死循环），
+ *  板子会"一声不响地卡住"，串口什么都看不到，根本无法定位。
+ *  改成返回状态码后，调用方可以一步一步打印出卡在哪。 */
+typedef enum {
+    AUDIO_INIT_OK         = 0,
+    AUDIO_INIT_TIM2_FAIL  = 1,   /* TIM2 PWM 初始化失败 */
+    AUDIO_INIT_DMA_FAIL   = 2,   /* DMA1_Channel1 初始化失败 */
+    AUDIO_INIT_ADC_FAIL   = 3,   /* ADC1 重新配置（HAL_ADC_Init）失败 */
+    AUDIO_INIT_CH_FAIL    = 4,   /* ADC 通道配置（HAL_ADC_ConfigChannel）失败 */
+    AUDIO_INIT_START_FAIL = 5,   /* HAL_ADC_Start_DMA 失败 */
+} audio_init_rc_t;
+
+/** 初始化：配置 TIM2 触发源、DMA1，把 ADC1 从"软件触发单次转换"
+ *  改成"TIM2_CH2 触发 + DMA 循环"。
+ *  返回 AUDIO_INIT_OK = 成功；其它值表示失败在哪一步。
+ *
+ *  ⚠ 调用方必须写成 `if (audio_init() == AUDIO_INIT_OK)`，
+ *    **不能**写 `if (audio_init())` —— 因为 AUDIO_INIT_OK == 0，
+ *    而 C 里"0 视为假"，那样会把成功判成失败。
+ *
+ *  ⚠ 必须在 MX_ADC1_Init() 之后调用（会覆盖它的触发源配置）。 */
+audio_init_rc_t audio_init(void);
 
 /** 采样是否在跑（调试用） */
 bool audio_is_running(void);
@@ -100,11 +137,34 @@ uint16_t audio_dma_pos(void);
  *    返回的是 0~4095 的原始 ADC 值。 */
 uint16_t audio_peek(uint16_t pos);
 
-/** 估计环境噪声基线（取 200ms 的平均值）。返回 ADC 平均值。 */
+/** 估计环境噪声基线（返回 ADC 均值，用于观察偏置）。 */
 uint16_t audio_measure_baseline(void);
 
-/** 等待语音触发。返回 true = 检测到有效语音（连续超阈值）。 */
-bool audio_wait_trigger(uint16_t baseline);
+/** 估计环境"噪声底"的 RMS 幅度（用于观察/排查）。
+ *  返回的是交流分量的 RMS（已去掉直流偏置），单位 ADC counts。
+ *  安静时通常 10~100；有声音时几百~上千。 */
+uint16_t audio_measure_noise_rms(void);
+
+/** 在 ms 毫秒内，**逐帧扫描并返回最大的那一帧 RMS**。
+ *  用途：标定"说话时到底有多响" —— 因为语音是起伏的，
+ *        取平均会被静音段拉低，取峰值才反映真实响度。
+ *  ⚠ 这个函数会阻塞 ms 毫秒。 */
+uint16_t audio_measure_peak_rms(uint32_t ms);
+
+/** 等待语音触发（基于短时能量 RMS 的 VAD）。
+ *  内部自己测噪声底并算阈值，不需要参数。
+ *  返回 true = 检测到有效语音。 */
+bool audio_wait_trigger(void);
+
+/** 上一次触发检测的诊断值（**触发超时时**用来判断原因）。
+ *  ⚠ 只在 audio_wait_trigger() 返回 false 后被更新。 */
+typedef struct {
+    uint16_t noise_rms;    /* 当时估到的噪声底 */
+    uint16_t thresh_rms;   /* 当时用的触发阈值 */
+    uint16_t peak_rms;     /* 等待期间实际见到的最大 RMS */
+} audio_trig_diag_t;
+
+void audio_get_trigger_diag(audio_trig_diag_t *out);
 
 /** 采集 AUDIO_CAPTURE_LEN 个样本到内部缓冲区（阻塞，约 1 秒）。
  *  返回指向缓冲区的指针（只读，长度 = AUDIO_CAPTURE_LEN）。 */

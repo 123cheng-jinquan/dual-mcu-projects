@@ -1,4 +1,4 @@
-# ---- STM32 / CubeMX 生成物 ----
+﻿# ---- STM32 / CubeMX 生成物 ----
 firmware-stm32/cubemx/Debug/
 firmware-stm32/cubemx/Release/
 firmware-stm32/cubemx/build/
@@ -105,31 +105,42 @@ tools/_pdf_parse.py
 
 # =============================================================================
 # 【项目2】声纹门禁 (STM32F103RET6) — Keil MDK 工程
+#   ⚠ 该项目已移入 `voice-lock/` 子目录，下面路径都已带上新前缀。
 # =============================================================================
 # Keil 编译产物（.o/.axf/.hex/.map 每次编译都变，不入库）
-firmware-stm32-ret6/MDK-ARM/VoiceLock_RET6/
-firmware-stm32-ret6/MDK-ARM/RTE/
-firmware-stm32-ret6/MDK-ARM/DebugConfig/
-firmware-stm32-ret6/MDK-ARM/Listings/
-firmware-stm32-ret6/MDK-ARM/Objects/
-firmware-stm32-ret6/**/*.o
-firmware-stm32-ret6/**/*.d
-firmware-stm32-ret6/**/*.crf
-firmware-stm32-ret6/**/*.lst
-firmware-stm32-ret6/**/*.axf
-firmware-stm32-ret6/**/*.htm
-firmware-stm32-ret6/**/*.build_log.htm
-firmware-stm32-ret6/**/*.dep
-firmware-stm32-ret6/**/*.lnp
-firmware-stm32-ret6/**/*.iex
+voice-lock/firmware-stm32-ret6/MDK-ARM/VoiceLock_RET6/
+voice-lock/firmware-stm32-ret6/MDK-ARM/RTE/
+voice-lock/firmware-stm32-ret6/MDK-ARM/DebugConfig/
+voice-lock/firmware-stm32-ret6/MDK-ARM/Listings/
+voice-lock/firmware-stm32-ret6/MDK-ARM/Objects/
+voice-lock/firmware-stm32-ret6/**/*.o
+voice-lock/firmware-stm32-ret6/**/*.d
+voice-lock/firmware-stm32-ret6/**/*.crf
+voice-lock/firmware-stm32-ret6/**/*.lst
+voice-lock/firmware-stm32-ret6/**/*.axf
+voice-lock/firmware-stm32-ret6/**/*.htm
+voice-lock/firmware-stm32-ret6/**/*.build_log.htm
+voice-lock/firmware-stm32-ret6/**/*.dep
+voice-lock/firmware-stm32-ret6/**/*.lnp
+voice-lock/firmware-stm32-ret6/**/*.iex
 # Keil 用户界面配置（含本机窗口布局/断点，不该跟着走）
-firmware-stm32-ret6/MDK-ARM/*.uvguix.*
-firmware-stm32-ret6/MDK-ARM/*.uvoptx.bak
+voice-lock/firmware-stm32-ret6/MDK-ARM/*.uvguix.*
+voice-lock/firmware-stm32-ret6/MDK-ARM/*.uvoptx.bak
 # CubeMX 自动备份
-firmware-stm32-ret6/*.ioc.*bak
-firmware-stm32-ret6/MyBiye.ioc.*
+voice-lock/firmware-stm32-ret6/*.ioc.*bak
+voice-lock/firmware-stm32-ret6/MyBiye.ioc.*
+# PlatformIO 构建产物（项目2 的 ESP32 侧）
+voice-lock/firmware-esp32-voicelock/.pio/
+voice-lock/firmware-esp32-voicelock/.vscode/
 # ---- 论文升级基线（C8T6 版，保留但不入库：与 archive 里的原始包重复）----
 archive/thesis-upgrade-baseline-C8T6/
+
+# =============================================================================
+# 视频处理中间产物（抽帧用的临时图，几十张，不入库）
+# =============================================================================
+_vidframes/
+_rgb_module/
+
 
 # =============================================================================
 # 归档区的编译产物（本地保留，不入库 —— 都是 Keil 生成的中间文件）
@@ -149,3 +160,7 @@ archive/**/*.dep
 archive/**/*.lnp
 archive/**/*.iex
 archive/**/*.uvguix.*
+
+# ---- 对外交付的源码压缩包（本机生成，与仓库内容重复）----
+*.zip
+!hardware/*.zip
