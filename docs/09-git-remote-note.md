@@ -1,4 +1,4 @@
-# 09 · Git 远程配置说明（网络受限环境）
+﻿# 09 · Git 远程配置说明（网络受限环境）
 
 > 这份是个**操作备忘**，不是技术文档。将来换机器或网络恢复时看它。
 
@@ -23,7 +23,7 @@ ssh.github.com:443       → 通                ✓
 
 ```bash
 git remote -v
-# origin  ssh://git@ssh.github.com:443/123cheng-jinquan/modbus-vibration-gateway.git
+# origin  ssh://git@ssh.github.com:443/123cheng-jinquan/dual-mcu-projects.git
 ```
 
 **注意**：这是 `ssh://` 形式的 URL（带端口 443），
@@ -43,7 +43,7 @@ git config core.sshCommand
 > 如果你换到网络正常的机器，建议改回标准形式：
 >
 > ```bash
-> git remote set-url origin git@github.com:123cheng-jinquan/modbus-vibration-gateway.git
+> git remote set-url origin git@github.com:123cheng-jinquan/dual-mcu-projects.git
 > git config --unset core.sshCommand
 > ```
 
