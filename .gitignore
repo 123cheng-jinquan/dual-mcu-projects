@@ -164,3 +164,4 @@ archive/**/*.uvguix.*
 # ---- 对外交付的源码压缩包（本机生成，与仓库内容重复）----
 *.zip
 !hardware/*.zip
+_commit_msg.txt
