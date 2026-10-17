@@ -243,7 +243,7 @@ MyProject/
 │  └─ cubemx/                    ← CubeMX 工程（.ioc + 生成代码），由你生成
 ├─ firmware-esp32/               ← PlatformIO 工程（Modbus 主站 / LVGL / 推理 / MQTT）
 ├─ tools/                        ← PC 侧脚本（CRC 对拍 / 主机压测 / 从机模拟 / 采样 / 训练）
-└─ hardware/Core.pdf             ← 核心板原理图
+└─ hardware/core-board/FryPi_Core.pdf   ← 核心板原理图
 ```
 
 ---

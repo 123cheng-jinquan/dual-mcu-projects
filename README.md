@@ -78,7 +78,7 @@ MyProject/
 ├─ firmware-esp32/                 项目1 上位机（主站 / LVGL / 推理 / MQTT）
 ├─ model_out/                      TFLite 模型产物
 ├─ tools/                          PC 侧脚本（协议对拍 / 压测 / 采样 / 训练 / 长跑）
-├─ hardware/Core.pdf               项目1 核心板原理图
+├─ hardware/                     硬件参考资料（原理图/模块手册，见其 README）
 └─ archive/                        论文原始代码归档（C8T6 版，留档对照）
 ```
 

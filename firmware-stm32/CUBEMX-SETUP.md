@@ -1,7 +1,7 @@
 # CubeMX 配置清单（FryPi-STM32F411RET6）· 照抄即可
 
 > 目标：按这份清单在 STM32CubeMX 里点一遍，就能得到一个"只剩业务代码要填"的工程。
-> 所有数值都来自板子原理图（`hardware/Core.pdf`）与 `docs/01-hardware.md` 的引脚分配。
+> 所有数值都来自板子原理图（`hardware/core-board/FryPi_Core.pdf`）与 `docs/01-hardware.md` 的引脚分配。
 
 ---
 
