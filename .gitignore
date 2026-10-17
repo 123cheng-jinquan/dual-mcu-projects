@@ -165,3 +165,6 @@ archive/**/*.uvguix.*
 *.zip
 !hardware/*.zip
 _commit_msg.txt
+
+# ---- 简历生成器（含私人联系方式，且与项目无关）----
+tools/gen_resume.py
