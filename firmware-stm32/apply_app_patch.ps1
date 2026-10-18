@@ -18,7 +18,7 @@
 #      C_SOURCES but never generates them, so make stops with
 #      "No rule to make target 'build/sysmem.o'".
 #      Only lines whose file is really missing are dropped.
-#   1) Appends the 4 ../../App/*.c files to C_SOURCES.
+#   1) Appends the 5 ../../App/<sub>/*.c files to C_SOURCES.
 #      IMPORTANT: must go *inside* the C_SOURCES definition, because
 #      "vpath %.c $(sort $(dir $(C_SOURCES)))" is expanded at parse time.
 #      Appending at end of file would leave the App dir out of vpath and make
@@ -78,7 +78,7 @@ if ($removed.Count -gt 0) {
 $text = $lines -join "`n"
 
 # ---- 1) C_SOURCES: insert the 4 App sources --------------------------------
-if ($text -match [regex]::Escape('../../App/app_main.c')) {
+if ($text -match [regex]::Escape('../../App/app/app_main.c')) {
     Write-Skip 'C_SOURCES already contains the App sources'
 } else {
     $idx = -1
@@ -90,33 +90,34 @@ if ($text -match [regex]::Escape('../../App/app_main.c')) {
         if ($idx -ge 0) { break }
     }
     if ($idx -lt 0) {
-        Write-Host "No usable anchor found in C_SOURCES - Makefile layout changed. Add the 4 ../../App/*.c lines by hand." -ForegroundColor Red
+        Write-Host "No usable anchor found in C_SOURCES - Makefile layout changed. Add the 5 ../../App/<sub>/*.c lines by hand." -ForegroundColor Red
         exit 1
     }
     $insert = @(
-        '../../App/modbus_crc.c \',
-        '../../App/modbus_slave.c \',
-        '../../App/regbank.c \',
-        '../../App/app_main.c'
+        '../../App/protocol/modbus_crc.c \',
+        '../../App/protocol/modbus_slave.c \',
+        '../../App/regmap/regbank.c \',
+        '../../App/features/vibration_feat.c \',
+        '../../App/app/app_main.c'
     )
     $lines[$idx] = ($lines[$idx] -replace '\s*\\\s*$', '') + ' \'
     $head = if ($idx -gt 0) { $lines[0..$idx] } else { @($lines[0]) }
     $tail = if ($idx + 1 -lt $lines.Count) { $lines[($idx + 1)..($lines.Count - 1)] } else { @() }
     $lines   = @($head) + $insert + @($tail)
     $changed = $true
-    Write-Ok 'C_SOURCES: added the 4 App source files'
+    Write-Ok 'C_SOURCES: added the 5 App source files'
 }
 
 # ---- 2) C_INCLUDES --------------------------------------------------------
 $text = $lines -join "`n"
-if ($text -match [regex]::Escape('-I../../App')) {
-    Write-Skip 'C_INCLUDES already has -I../../App'
+if ($text -match [regex]::Escape('-I../../App/app')) {
+    Write-Skip 'C_INCLUDES already has the App sub-dir includes'
 } else {
     $lines += ''
     $lines += '# ---- hand-written app code (firmware-stm32/App): appended by apply_app_patch.ps1 ----'
-    $lines += 'C_INCLUDES += -I../../App'
+    $lines += 'C_INCLUDES += -I../../App/protocol -I../../App/regmap -I../../App/features -I../../App/app'
     $changed = $true
-    Write-Ok 'C_INCLUDES: added -I../../App'
+    Write-Ok 'C_INCLUDES: added 4 App sub-dir includes'
 }
 
 # ---- 3) C_DEFS ------------------------------------------------------------

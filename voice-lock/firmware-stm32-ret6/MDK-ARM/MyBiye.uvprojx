@@ -341,7 +341,7 @@
               <MiscControls></MiscControls>
               <Define>USE_HAL_DRIVER,STM32F103xE</Define>
               <Undefine></Undefine>
-              <IncludePath>../Core/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include</IncludePath>
+              <IncludePath>../Core/Inc;../App/audio;../App/protocol;../App/ui;../Drivers/STM32F1xx_HAL_Driver/Inc;../Drivers/STM32F1xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F1xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>
           </Cads>
           <Aads>
@@ -398,17 +398,17 @@
             <File>
               <FileName>audio_capture.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../Core/Src/audio_capture.c</FilePath>
+              <FilePath>../App/audio/audio_capture.c</FilePath>
             </File>
             <File>
               <FileName>uart_proto.c</FileName>
               <FileType>1</FileType>
-              <FilePath>../Core/Src/uart_proto.c</FilePath>
+              <FilePath>../App/protocol/uart_proto.c</FilePath>
             </File>
             <File>
               <FileName>oled.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\Core\Src\oled.c</FilePath>
+              <FilePath>..\App\ui\oled.c</FilePath>
             </File>
             <File>
               <FileName>main.c</FileName>

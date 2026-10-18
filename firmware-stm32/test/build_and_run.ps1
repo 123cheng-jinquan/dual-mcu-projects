@@ -23,16 +23,35 @@ $stubs = Join-Path $root "test\stubs"
 $ext   = if ($IsLinux -or $IsMacOS) { "" } else { ".exe" }
 $out   = Join-Path $root "test\modbus_tests$ext"
 
+# NOTE: App/ is split into sub-directories by responsibility (see App/README.md):
+#   protocol/ = Modbus stack | regmap/ = register table
+#   features/ = feature algorithm | app/ = task orchestration
+# So each source path and each include dir has to be listed explicitly.
+# WARNING: keep this file ASCII-only. PowerShell 5.1 reads a BOM-less .ps1 as GBK,
+#          so any UTF-8 Chinese in here breaks parsing (documented in README).
+$appProtocol = Join-Path $app "protocol"
+$appRegmap   = Join-Path $app "regmap"
+$appFeatures = Join-Path $app "features"
+$appApp      = Join-Path $app "app"
+
 $commonSources = @(
-    (Join-Path $app "modbus_crc.c"),
-    (Join-Path $app "modbus_slave.c"),
-    (Join-Path $app "regbank.c")
+    (Join-Path $appProtocol "modbus_crc.c"),
+    (Join-Path $appProtocol "modbus_slave.c"),
+    (Join-Path $appRegmap   "regbank.c"),
+    (Join-Path $appFeatures "vibration_feat.c")
+)
+
+$appIncludes = @(
+    "-I", $appProtocol,
+    "-I", $appRegmap,
+    "-I", $appFeatures,
+    "-I", $appApp
 )
 
 if ($SyntaxOnly) {
     Write-Host "== syntax check (HAL stubs) ==" -ForegroundColor Cyan
-    $targets = $commonSources + (Join-Path $app "app_main.c")
-    & $Compiler -std=c99 -Wall -Wextra -fsyntax-only -I $stubs -I $app @targets
+    $targets = $commonSources + (Join-Path $appApp "app_main.c")
+    & $Compiler -std=c99 -Wall -Wextra -fsyntax-only -I $stubs @appIncludes @targets
     if ($LASTEXITCODE -ne 0) {
         Write-Host "syntax check FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
         exit $LASTEXITCODE
@@ -42,7 +61,7 @@ if ($SyntaxOnly) {
 }
 
 Write-Host "== compile unit tests ==" -ForegroundColor Cyan
-& $Compiler -std=c99 -Wall -Wextra -I $app @commonSources (Join-Path $root "test\test_modbus.c") -o $out
+& $Compiler -std=c99 -Wall -Wextra @appIncludes @commonSources (Join-Path $root "test\test_modbus.c") -o $out
 if ($LASTEXITCODE -ne 0) {
     Write-Host "compile FAILED (exit $LASTEXITCODE)" -ForegroundColor Red
     exit $LASTEXITCODE

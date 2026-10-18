@@ -80,15 +80,18 @@ C_SOURCES =  \
 ../Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/cmsis_os.c \
 ../Middlewares/Third_Party/FreeRTOS/Source/portable/MemMang/heap_4.c \
 ../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F/port.c \
-../../App/modbus_crc.c \
-../../App/modbus_slave.c \
-../../App/regbank.c \
-../../App/app_main.c
+../../App/protocol/modbus_crc.c \
+../../App/protocol/modbus_slave.c \
+../../App/regmap/regbank.c \
+../../App/features/vibration_feat.c \
+../../App/app/app_main.c
 
-# ↑ 最后 4 行是手写应用代码（firmware-stm32/App），由工具追加。
+# ↑ 最后 5 行是手写应用代码（firmware-stm32/App），由工具追加。
+#   分层：protocol/（Modbus 协议）· regmap/（寄存器表）·
+#         features/（特征算法）· app/（任务编排与初始化）
 #   ⚠️ CubeMX 每次 "GENERATE CODE" 都会重建本 Makefile。重新生成后需要补回三处：
-#      1) 上面 C_SOURCES 里的 4 个 ../../App/*.c
-#      2) C_INCLUDES 里的 -I../../App
+#      1) 上面 C_SOURCES 里的 5 个 ../../App/**.c
+#      2) C_INCLUDES 里的 5 个 -I../../App/** 目录
 #      3) C_DEFS 里的 -DREGBANK_USE_FREERTOS（漏了会导致寄存器表临界区失效）
 #      可在 firmware-stm32 目录下执行：pwsh -File apply_app_patch.ps1  
 
@@ -168,7 +171,10 @@ C_INCLUDES =  \
 -I../Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM4F \
 -I../Drivers/CMSIS/Device/ST/STM32F4xx/Include \
 -I../Drivers/CMSIS/Include \
--I../../App
+-I../../App/protocol \
+-I../../App/regmap \
+-I../../App/features \
+-I../../App/app
 
 
 # compile gcc flags
